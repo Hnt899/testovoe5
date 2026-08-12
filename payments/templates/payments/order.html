@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Order #{{ order.id }}</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 640px; margin: 2rem auto; padding: 0 1rem; }
+    table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
+    th, td { text-align: left; padding: 0.5rem; border-bottom: 1px solid #ddd; }
+    button { padding: 0.75rem 1.5rem; font-size: 1rem; cursor: pointer; }
+    .error { color: #b00020; }
+  </style>
+</head>
+<body>
+  <h1>Order #{{ order.id }}</h1>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Item</th>
+        <th>Price</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in order.items.all %}
+      <tr>
+        <td>{{ item.name }}</td>
+        <td>{{ item.price }} {{ item.currency|upper }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% if order.discount %}
+  <p>Discount: {{ order.discount.name }} ({{ order.discount.percent_off }}%)</p>
+  {% endif %}
+
+  {% if order.tax %}
+  <p>Tax: {{ order.tax.name }} ({{ order.tax.percentage }}%)</p>
+  {% endif %}
+
+  <p><strong>Total: {{ order.total_price }} {{ order.currency|upper }}</strong></p>
+
+  {% if config_error %}
+  <p class="error">{{ config_error }}</p>
+  {% else %}
+  <button id="buy-button" type="button">Buy Order</button>
+  {% endif %}
+
+  {% if not config_error %}
+  <script src="https://js.stripe.com/v3/"></script>
+  <script>
+    const stripe = Stripe('{{ stripe_public_key }}');
+    const buyButton = document.getElementById('buy-button');
+
+    buyButton.addEventListener('click', async () => {
+      buyButton.disabled = true;
+      try {
+        const response = await fetch('/buy-order/{{ order.id }}');
+        const contentType = response.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) {
+          throw new Error('Server returned invalid response. Check Stripe keys on Render.');
+        }
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || 'Server error');
+        }
+        if (data.url) {
+          window.location.href = data.url;
+          return;
+        }
+        const result = await stripe.redirectToCheckout({ sessionId: data.id });
+        if (result.error) {
+          throw new Error(result.error.message);
+        }
+      } catch (error) {
+        buyButton.disabled = false;
+        alert(error.message || 'Payment initialization failed.');
+      }
+    });
+  </script>
+  {% endif %}
+</body>
+</html>
